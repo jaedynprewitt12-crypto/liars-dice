@@ -1,0 +1,308 @@
+const path = require("path");
+const http = require("http");
+const express = require("express");
+const { Server } = require("socket.io");
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
+const PORT = process.env.PORT || 3000;
+
+app.use(express.static(path.join(__dirname, "public")));
+
+const rooms = new Map();
+const MAX_PLAYERS = 6;
+const MIN_PLAYERS = 2;
+const STARTING_DICE = 5;
+
+function makeRoomCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code;
+  do {
+    code = Array.from({ length: 5 }, () =>
+      chars[Math.floor(Math.random() * chars.length)]
+    ).join("");
+  } while (rooms.has(code));
+  return code;
+}
+
+function rollDice(count) {
+  return Array.from({ length: count }, () =>
+    1 + Math.floor(Math.random() * 6)
+  );
+}
+
+function activePlayers(room) {
+  return room.players.filter(p => p.dice.length > 0);
+}
+
+function totalDice(room) {
+  return room.players.reduce((sum, p) => sum + p.dice.length, 0);
+}
+
+function countFace(room, face) {
+  return room.players.reduce(
+    (sum, p) => sum + p.dice.filter(d => d === face).length,
+    0
+  );
+}
+
+function isBidHigher(newBid, oldBid) {
+  if (!oldBid) return true;
+  if (newBid.quantity > oldBid.quantity) return true;
+  return newBid.quantity === oldBid.quantity && newBid.face > oldBid.face;
+}
+
+function nextActivePlayer(room, fromId) {
+  const players = activePlayers(room);
+  const index = players.findIndex(p => p.id === fromId);
+  return players[(index + 1) % players.length];
+}
+
+function publicState(room) {
+  return {
+    code: room.code,
+    phase: room.phase,
+    players: room.players.map(p => ({
+      id: p.id,
+      name: p.name,
+      diceCount: p.dice.length,
+      connected: p.connected
+    })),
+    currentPlayerId: room.currentPlayerId,
+    bid: room.bid
+      ? {
+          quantity: room.bid.quantity,
+          face: room.bid.face,
+          playerId: room.bid.playerId
+        }
+      : null,
+    message: room.message,
+    winner: room.winner
+  };
+}
+
+function sendState(room) {
+  io.to(room.code).emit("state", publicState(room));
+
+  for (const player of room.players) {
+    io.to(player.id).emit("privateDice", {
+      dice: player.dice,
+      name: player.name
+    });
+  }
+}
+
+function removeDie(player) {
+  if (player && player.dice.length > 0) {
+    player.dice.pop();
+  }
+}
+
+function checkWinner(room) {
+  const alive = activePlayers(room);
+
+  if (alive.length === 1) {
+    room.phase = "gameOver";
+    room.winner = alive[0].name;
+    room.currentPlayerId = null;
+    room.message = `${alive[0].name} wins the game!`;
+    return true;
+  }
+
+  return false;
+}
+
+function startRound(room, starterId) {
+  room.players.forEach(player => {
+    if (player.dice.length > 0) {
+      player.dice = rollDice(player.dice.length);
+    }
+  });
+
+  room.bid = null;
+  room.phase = "playing";
+  room.currentPlayerId = starterId;
+
+  const starter = room.players.find(p => p.id === starterId);
+  room.message = `${starter.name}'s turn.`;
+
+  sendState(room);
+}
+
+io.on("connection", socket => {
+
+  socket.on("createRoom", ({ name }) => {
+    name = String(name || "").trim().slice(0, 20);
+
+    if (!name) {
+      return socket.emit("errorMessage", "Enter a name.");
+    }
+
+    const code = makeRoomCode();
+
+    const room = {
+      code,
+      phase: "lobby",
+      players: [{
+        id: socket.id,
+        name,
+        dice: [],
+        connected: true
+      }],
+      currentPlayerId: null,
+      bid: null,
+      message: "Waiting for players...",
+      winner: null
+    };
+
+    rooms.set(code, room);
+    socket.join(code);
+    socket.data.roomCode = code;
+
+    sendState(room);
+  });
+
+  socket.on("joinRoom", ({ code, name }) => {
+    code = String(code || "").trim().toUpperCase();
+    name = String(name || "").trim().slice(0, 20);
+
+    const room = rooms.get(code);
+
+    if (!name) return socket.emit("errorMessage", "Enter a name.");
+    if (!room) return socket.emit("errorMessage", "Room not found.");
+    if (room.phase !== "lobby")
+      return socket.emit("errorMessage", "Game already started.");
+    if (room.players.length >= MAX_PLAYERS)
+      return socket.emit("errorMessage", "Room is full.");
+
+    room.players.push({
+      id: socket.id,
+      name,
+      dice: [],
+      connected: true
+    });
+
+    socket.join(code);
+    socket.data.roomCode = code;
+
+    room.message = `${name} joined the room.`;
+
+    sendState(room);
+  });
+
+  socket.on("startGame", () => {
+    const room = rooms.get(socket.data.roomCode);
+
+    if (!room) return;
+
+    if (room.players[0].id !== socket.id)
+      return socket.emit("errorMessage", "Only the host can start.");
+
+    if (room.players.length < MIN_PLAYERS)
+      return socket.emit("errorMessage", "Need at least 2 players.");
+
+    room.players.forEach(player => {
+      player.dice = rollDice(STARTING_DICE);
+    });
+
+    room.phase = "playing";
+    room.bid = null;
+    room.winner = null;
+    room.currentPlayerId = room.players[0].id;
+    room.message = `${room.players[0].name}'s turn.`;
+
+    sendState(room);
+  });
+
+  socket.on("bid", ({ quantity, face }) => {
+
+    const room = rooms.get(socket.data.roomCode);
+
+    if (!room || room.phase !== "playing") return;
+
+    if (room.currentPlayerId !== socket.id)
+      return socket.emit("errorMessage", "It is not your turn.");
+
+    quantity = Number(quantity);
+    face = Number(face);
+
+    if (quantity < 1 || quantity > totalDice(room))
+      return socket.emit("errorMessage", "Invalid quantity.");
+
+    if (face < 1 || face > 6)
+      return socket.emit("errorMessage", "Invalid face.");
+
+    const newBid = {
+      quantity,
+      face,
+      playerId: socket.id
+    };
+
+    if (!isBidHigher(newBid, room.bid))
+      return socket.emit("errorMessage", "Bid must be higher.");
+
+    room.bid = newBid;
+
+    const next = nextActivePlayer(room, socket.id);
+
+    room.currentPlayerId = next.id;
+    room.message = `${next.name}'s turn.`;
+
+    sendState(room);
+  });
+
+  socket.on("callLiar", () => {
+
+    const room = rooms.get(socket.data.roomCode);
+
+    if (!room || room.phase !== "playing") return;
+
+    if (room.currentPlayerId !== socket.id)
+      return socket.emit("errorMessage", "It is not your turn.");
+
+    if (!room.bid)
+      return socket.emit("errorMessage", "No bid to challenge.");
+
+    const caller = room.players.find(p => p.id === socket.id);
+    const bidder = room.players.find(p => p.id === room.bid.playerId);
+
+    const actualCount = countFace(room, room.bid.face);
+    const bidWasTrue = actualCount >= room.bid.quantity;
+
+    const loser = bidWasTrue ? caller : bidder;
+
+    removeDie(loser);
+
+    if (checkWinner(room)) {
+      sendState(room);
+      return;
+    }
+
+    startRound(room, loser.id);
+  });
+
+  socket.on("restartGame", () => {
+
+    const room = rooms.get(socket.data.roomCode);
+
+    if (!room) return;
+
+    room.players.forEach(player => {
+      player.dice = rollDice(STARTING_DICE);
+    });
+
+    room.phase = "playing";
+    room.bid = null;
+    room.winner = null;
+    room.currentPlayerId = room.players[0].id;
+    room.message = `${room.players[0].name}'s turn.`;
+
+    sendState(room);
+  });
+
+});
+
+server.listen(PORT, () => {
+  console.log(`Liar's Dice server running on http://localhost:${PORT}`);
+});
