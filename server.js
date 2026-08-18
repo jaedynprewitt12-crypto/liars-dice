@@ -110,7 +110,7 @@ function countFace(room, face) {
 
 
 // ======================================================
-// NEXT PLAYER
+// NEXT ACTIVE PLAYER
 // ======================================================
 
 function getNextPlayer(
@@ -121,17 +121,51 @@ function getNextPlayer(
     const players =
         activePlayers(room);
 
-    const index =
-        players.findIndex(
+    if (players.length === 0) {
+        return null;
+    }
+
+    const currentIndex =
+        room.players.findIndex(
             player =>
                 player.id ===
                 currentPlayerId
         );
 
-    return players[
-        (index + 1) %
-        players.length
-    ];
+
+    // Walk through the original player order
+    // until we find the next player with dice.
+
+    for (
+        let i = 1;
+        i <= room.players.length;
+        i++
+    ) {
+
+        const index =
+            (
+                currentIndex + i
+            ) %
+            room.players.length;
+
+
+        const player =
+            room.players[index];
+
+
+        if (
+            player &&
+            player.dice.length > 0
+        ) {
+
+            return player;
+
+        }
+
+    }
+
+
+    return null;
 
 }
 
@@ -140,23 +174,13 @@ function getNextPlayer(
 // BIDDING RULE
 //
 // SAME FACE:
-// quantity MUST increase.
+// quantity must increase.
 //
 // HIGHER FACE:
 // quantity can reset to ANY number.
 //
 // LOWER FACE:
-// NEVER allowed.
-//
-// Examples:
-//
-// 3 x 1 -> 2 x 2  ✅
-// 2 x 2 -> 1 x 3  ✅
-// 1 x 3 -> 1 x 4  ✅
-// 1 x 4 -> 4 x 4  ✅
-// 4 x 4 -> 3 x 4  ❌
-// 3 x 4 -> 5 x 3  ❌
-// 3 x 4 -> 1 x 5  ✅
+// not allowed.
 // ======================================================
 
 function isHigherBid(
@@ -165,14 +189,11 @@ function isHigherBid(
 ) {
 
     if (!oldBid) {
-
         return true;
-
     }
 
 
-    // Higher face:
-    // quantity can reset to anything.
+    // Higher face allows any quantity.
 
     if (
         newBid.face >
@@ -184,8 +205,7 @@ function isHigherBid(
     }
 
 
-    // Same face:
-    // quantity must increase.
+    // Same face requires higher quantity.
 
     if (
         newBid.face ===
@@ -200,15 +220,13 @@ function isHigherBid(
     }
 
 
-    // Lower face is never allowed.
-
     return false;
 
 }
 
 
 // ======================================================
-// PUBLIC GAME STATE
+// PUBLIC STATE
 // ======================================================
 
 function getPublicState(room) {
@@ -237,8 +255,8 @@ function getPublicState(room) {
                     connected:
                         player.connected,
 
-                    // During reveal, everyone
-                    // gets everyone's dice.
+                    eliminated:
+                        player.dice.length === 0,
 
                     revealedDice:
 
@@ -302,7 +320,7 @@ function sendState(room) {
     );
 
 
-    // Send each player their private dice.
+    // Send private dice to each player.
 
     for (
         const player of room.players
@@ -317,70 +335,6 @@ function sendState(room) {
         );
 
     }
-
-}
-
-
-// ======================================================
-// START NEXT ROUND
-// ======================================================
-
-function startNextRound(
-    room,
-    starterId
-) {
-
-    room.players.forEach(
-        player => {
-
-            if (
-                player.dice.length > 0
-            ) {
-
-                player.dice =
-                    rollDice(
-                        player.dice.length
-                    );
-
-            }
-
-        }
-    );
-
-
-    room.phase =
-        "playing";
-
-
-    room.bid =
-        null;
-
-
-    room.reveal =
-        null;
-
-
-    room.currentPlayerId =
-        starterId;
-
-
-    room.winner =
-        null;
-
-
-    const starter =
-        room.players.find(
-            player =>
-                player.id ===
-                starterId
-        );
-
-
-    room.message =
-        `${starter.name}'s turn.`;
-
-
-    sendState(room);
 
 }
 
@@ -420,7 +374,124 @@ function checkWinner(room) {
     }
 
 
+    if (
+        alive.length === 0
+    ) {
+
+        room.phase =
+            "gameOver";
+
+
+        room.currentPlayerId =
+            null;
+
+
+        room.message =
+            "Game over.";
+
+
+        return true;
+
+    }
+
+
     return false;
+
+}
+
+
+// ======================================================
+// START NEXT ROUND
+// ======================================================
+
+function startNextRound(
+    room,
+    preferredStarterId
+) {
+
+    // Roll only players who still have dice.
+
+    room.players.forEach(
+        player => {
+
+            if (
+                player.dice.length > 0
+            ) {
+
+                player.dice =
+                    rollDice(
+                        player.dice.length
+                    );
+
+            }
+
+        }
+    );
+
+
+    // Find the preferred starter.
+
+    let starter =
+        room.players.find(
+            player =>
+                player.id ===
+                preferredStarterId &&
+                player.dice.length > 0
+        );
+
+
+    // If the preferred starter is eliminated,
+    // find the next player who still has dice.
+
+    if (!starter) {
+
+        starter =
+            getNextPlayer(
+                room,
+                preferredStarterId
+            );
+
+    }
+
+
+    // Safety check.
+
+    if (!starter) {
+
+        checkWinner(room);
+
+        sendState(room);
+
+        return;
+
+    }
+
+
+    room.phase =
+        "playing";
+
+
+    room.bid =
+        null;
+
+
+    room.reveal =
+        null;
+
+
+    room.winner =
+        null;
+
+
+    room.currentPlayerId =
+        starter.id;
+
+
+    room.message =
+        `${starter.name}'s turn.`;
+
+
+    sendState(room);
 
 }
 
@@ -744,7 +815,7 @@ io.on(
 
 
         // ==================================================
-        // MAKE BID
+        // BID
         // ==================================================
 
         socket.on(
@@ -764,6 +835,28 @@ io.on(
                 ) {
 
                     return;
+                }
+
+
+                const currentPlayer =
+                    room.players.find(
+                        player =>
+                            player.id ===
+                            socket.id
+                    );
+
+
+                // Eliminated players cannot bid.
+
+                if (
+                    !currentPlayer ||
+                    currentPlayer.dice.length === 0
+                ) {
+
+                    return socket.emit(
+                        "errorMessage",
+                        "You are out of the game."
+                    );
 
                 }
 
@@ -852,9 +945,10 @@ io.on(
 
                         room.bid
 
-                            ? `Invalid bid. You must increase the quantity if using ${room.bid.face}s, or choose a higher face than ${room.bid.face}.`
+                            ? `Invalid bid. Same face requires a higher quantity, or choose a higher face.`
 
                             : "Invalid bid."
+
                     );
 
                 }
@@ -869,6 +963,13 @@ io.on(
                         room,
                         socket.id
                     );
+
+
+                if (!next) {
+
+                    return;
+
+                }
 
 
                 room.currentPlayerId =
@@ -909,6 +1010,29 @@ io.on(
                 }
 
 
+                const caller =
+                    room.players.find(
+                        player =>
+                            player.id ===
+                            socket.id
+                    );
+
+
+                // Eliminated player cannot call liar.
+
+                if (
+                    !caller ||
+                    caller.dice.length === 0
+                ) {
+
+                    return socket.emit(
+                        "errorMessage",
+                        "You are out of the game."
+                    );
+
+                }
+
+
                 if (
                     room.currentPlayerId !==
                     socket.id
@@ -932,14 +1056,6 @@ io.on(
                 }
 
 
-                const caller =
-                    room.players.find(
-                        player =>
-                            player.id ===
-                            socket.id
-                    );
-
-
                 const bidder =
                     room.players.find(
                         player =>
@@ -948,10 +1064,8 @@ io.on(
                     );
 
 
-                // ------------------------------------------
-                // FREEZE EVERYONE'S DICE
-                // BEFORE PENALTY
-                // ------------------------------------------
+                // Freeze dice BEFORE removing
+                // the loser's die.
 
                 const frozenDice =
                     room.players.map(
@@ -1020,8 +1134,6 @@ io.on(
                 };
 
 
-                // Freeze the game.
-
                 room.phase =
                     "reveal";
 
@@ -1038,8 +1150,6 @@ io.on(
                         : `${caller.name} called Liar — LIAR!`;
 
 
-                // DO NOT REMOVE DIE YET.
-
                 sendState(room);
 
             }
@@ -1047,7 +1157,7 @@ io.on(
 
 
         // ==================================================
-        // CONTINUE AFTER REVEAL
+        // CONTINUE ROUND
         // ==================================================
 
         socket.on(
@@ -1076,17 +1186,21 @@ io.on(
                 }
 
 
-                // ------------------------------------------
-                // NOW REMOVE LOSER'S DIE
-                // ------------------------------------------
+                const loserId =
+                    room.reveal.loserId;
+
 
                 const loser =
                     room.players.find(
                         player =>
                             player.id ===
-                            room.reveal.loserId
+                            loserId
                     );
 
+
+                // ------------------------------------------
+                // REMOVE ONE DIE
+                // ------------------------------------------
 
                 if (
                     loser &&
@@ -1096,6 +1210,15 @@ io.on(
                     loser.dice.pop();
 
                 }
+
+
+                // ------------------------------------------
+                // CHECK IF LOSER IS ELIMINATED
+                // ------------------------------------------
+
+                const eliminated =
+                    loser &&
+                    loser.dice.length === 0;
 
 
                 // ------------------------------------------
@@ -1114,12 +1237,52 @@ io.on(
 
 
                 // ------------------------------------------
-                // LOSER STARTS NEXT ROUND
+                // FIND NEXT STARTER
+                // ------------------------------------------
+
+                let starterId;
+
+
+                if (
+                    loser &&
+                    loser.dice.length > 0
+                ) {
+
+                    // If the loser still has dice,
+                    // they start the next round.
+
+                    starterId =
+                        loser.id;
+
+                } else {
+
+                    // If they are eliminated,
+                    // find the next player with dice.
+
+                    const next =
+                        getNextPlayer(
+                            room,
+                            loserId
+                        );
+
+
+                    if (next) {
+
+                        starterId =
+                            next.id;
+
+                    }
+
+                }
+
+
+                // ------------------------------------------
+                // START ROUND
                 // ------------------------------------------
 
                 startNextRound(
                     room,
-                    room.reveal.loserId
+                    starterId
                 );
 
             }
@@ -1127,7 +1290,7 @@ io.on(
 
 
         // ==================================================
-        // RESTART GAME
+        // RESTART
         // ==================================================
 
         socket.on(
@@ -1278,7 +1441,7 @@ io.on(
 
 
 // ======================================================
-// START SERVER
+// SERVER
 // ======================================================
 
 server.listen(
