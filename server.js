@@ -18,25 +18,28 @@ const MIN_PLAYERS = 2;
 const STARTING_DICE = 5;
 
 
-// -----------------------------
-// RANDOM DICE
-// -----------------------------
+// ======================================================
+// DICE
+// ======================================================
 
 function rollDice(count) {
+
     return Array.from(
         { length: count },
         () => Math.floor(Math.random() * 6) + 1
     );
+
 }
 
 
-// -----------------------------
+// ======================================================
 // ROOM CODE
-// -----------------------------
+// ======================================================
 
 function makeRoomCode() {
 
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const chars =
+        "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
     let code;
 
@@ -44,122 +47,215 @@ function makeRoomCode() {
 
         code = Array.from(
             { length: 5 },
-            () => chars[Math.floor(Math.random() * chars.length)]
+            () =>
+                chars[
+                    Math.floor(
+                        Math.random() * chars.length
+                    )
+                ]
         ).join("");
 
     } while (rooms.has(code));
 
     return code;
+
 }
 
 
-// -----------------------------
-// PLAYER HELPERS
-// -----------------------------
+// ======================================================
+// ACTIVE PLAYERS
+// ======================================================
 
 function activePlayers(room) {
 
     return room.players.filter(
-        player => player.dice.length > 0
+        player =>
+            player.dice.length > 0
     );
 
 }
 
 
+// ======================================================
+// TOTAL DICE
+// ======================================================
+
 function totalDice(room) {
 
     return room.players.reduce(
-        (total, player) => total + player.dice.length,
+        (total, player) =>
+            total + player.dice.length,
         0
     );
 
 }
 
+
+// ======================================================
+// COUNT FACE
+// ======================================================
 
 function countFace(room, face) {
 
     return room.players.reduce(
         (total, player) =>
             total +
-            player.dice.filter(die => die === face).length,
+            player.dice.filter(
+                die => die === face
+            ).length,
         0
     );
 
 }
 
 
-function getNextPlayer(room, currentPlayerId) {
+// ======================================================
+// NEXT PLAYER
+// ======================================================
 
-    const players = activePlayers(room);
+function getNextPlayer(
+    room,
+    currentPlayerId
+) {
 
-    const index = players.findIndex(
-        player => player.id === currentPlayerId
-    );
+    const players =
+        activePlayers(room);
+
+    const index =
+        players.findIndex(
+            player =>
+                player.id ===
+                currentPlayerId
+        );
 
     return players[
-        (index + 1) % players.length
+        (index + 1) %
+        players.length
     ];
+
 }
 
 
-// -----------------------------
-// BID RULE
-// -----------------------------
+// ======================================================
+// BIDDING RULE
+//
+// SAME FACE:
+// quantity MUST increase.
+//
+// HIGHER FACE:
+// quantity can reset to ANY number.
+//
+// LOWER FACE:
+// NEVER allowed.
+//
+// Examples:
+//
+// 3 x 1 -> 2 x 2  ✅
+// 2 x 2 -> 1 x 3  ✅
+// 1 x 3 -> 1 x 4  ✅
+// 1 x 4 -> 4 x 4  ✅
+// 4 x 4 -> 3 x 4  ❌
+// 3 x 4 -> 5 x 3  ❌
+// 3 x 4 -> 1 x 5  ✅
+// ======================================================
 
-function isHigherBid(newBid, oldBid) {
+function isHigherBid(
+    newBid,
+    oldBid
+) {
 
     if (!oldBid) {
+
         return true;
+
     }
 
-    if (newBid.quantity > oldBid.quantity) {
-        return true;
-    }
+
+    // Higher face:
+    // quantity can reset to anything.
 
     if (
-        newBid.quantity === oldBid.quantity &&
-        newBid.face > oldBid.face
+        newBid.face >
+        oldBid.face
     ) {
+
         return true;
+
     }
 
+
+    // Same face:
+    // quantity must increase.
+
+    if (
+        newBid.face ===
+        oldBid.face &&
+
+        newBid.quantity >
+        oldBid.quantity
+    ) {
+
+        return true;
+
+    }
+
+
+    // Lower face is never allowed.
+
     return false;
+
 }
 
 
-// -----------------------------
-// SEND GAME STATE
-// -----------------------------
+// ======================================================
+// PUBLIC GAME STATE
+// ======================================================
 
 function getPublicState(room) {
 
     return {
 
-        code: room.code,
+        code:
+            room.code,
 
-        phase: room.phase,
+        phase:
+            room.phase,
 
-        players: room.players.map(player => ({
+        players:
+            room.players.map(
+                player => ({
 
-            id: player.id,
+                    id:
+                        player.id,
 
-            name: player.name,
+                    name:
+                        player.name,
 
-            diceCount: player.dice.length,
+                    diceCount:
+                        player.dice.length,
 
-            connected: player.connected,
+                    connected:
+                        player.connected,
 
-            // IMPORTANT:
-            // During reveal, everyone gets everyone's dice.
-            revealedDice:
-                (
-                    room.phase === "reveal" ||
-                    room.phase === "gameOver"
-                )
-                    ? player.dice.slice()
-                    : null
+                    // During reveal, everyone
+                    // gets everyone's dice.
 
-        })),
+                    revealedDice:
+
+                        (
+                            room.phase ===
+                            "reveal" ||
+
+                            room.phase ===
+                            "gameOver"
+                        )
+
+                            ? player.dice.slice()
+
+                            : null
+
+                })
+            ),
 
         currentPlayerId:
             room.currentPlayerId,
@@ -167,20 +263,36 @@ function getPublicState(room) {
         bid:
             room.bid
                 ? {
-                    quantity: room.bid.quantity,
-                    face: room.bid.face,
-                    playerId: room.bid.playerId
+
+                    quantity:
+                        room.bid.quantity,
+
+                    face:
+                        room.bid.face,
+
+                    playerId:
+                        room.bid.playerId
+
                 }
                 : null,
 
-        reveal: room.reveal,
+        reveal:
+            room.reveal,
 
-        message: room.message,
+        message:
+            room.message,
 
-        winner: room.winner
+        winner:
+            room.winner
+
     };
+
 }
 
+
+// ======================================================
+// SEND STATE
+// ======================================================
 
 function sendState(room) {
 
@@ -190,15 +302,17 @@ function sendState(room) {
     );
 
 
-    // Each player gets their own private dice
-    // while the game is being played.
+    // Send each player their private dice.
 
-    for (const player of room.players) {
+    for (
+        const player of room.players
+    ) {
 
         io.to(player.id).emit(
             "privateDice",
             {
-                dice: player.dice
+                dice:
+                    player.dice
             }
         );
 
@@ -207,39 +321,58 @@ function sendState(room) {
 }
 
 
-// -----------------------------
-// START NEW ROUND
-// -----------------------------
+// ======================================================
+// START NEXT ROUND
+// ======================================================
 
-function startNextRound(room, starterId) {
+function startNextRound(
+    room,
+    starterId
+) {
 
-    // Roll only players who still have dice.
+    room.players.forEach(
+        player => {
 
-    room.players.forEach(player => {
+            if (
+                player.dice.length > 0
+            ) {
 
-        if (player.dice.length > 0) {
+                player.dice =
+                    rollDice(
+                        player.dice.length
+                    );
 
-            player.dice =
-                rollDice(player.dice.length);
+            }
 
         }
+    );
 
-    });
+
+    room.phase =
+        "playing";
 
 
-    room.phase = "playing";
+    room.bid =
+        null;
 
-    room.bid = null;
 
-    room.reveal = null;
+    room.reveal =
+        null;
+
 
     room.currentPlayerId =
         starterId;
 
 
+    room.winner =
+        null;
+
+
     const starter =
         room.players.find(
-            player => player.id === starterId
+            player =>
+                player.id ===
+                starterId
         );
 
 
@@ -252,9 +385,9 @@ function startNextRound(room, starterId) {
 }
 
 
-// -----------------------------
-// WINNER CHECK
-// -----------------------------
+// ======================================================
+// CHECK WINNER
+// ======================================================
 
 function checkWinner(room) {
 
@@ -262,19 +395,25 @@ function checkWinner(room) {
         activePlayers(room);
 
 
-    if (alive.length === 1) {
+    if (
+        alive.length === 1
+    ) {
 
         room.phase =
             "gameOver";
 
+
         room.winner =
             alive[0].name;
+
 
         room.currentPlayerId =
             null;
 
+
         room.message =
             `${alive[0].name} wins the game!`;
+
 
         return true;
 
@@ -282,819 +421,865 @@ function checkWinner(room) {
 
 
     return false;
+
 }
 
 
-// -----------------------------
-// CONNECTION
-// -----------------------------
+// ======================================================
+// SOCKET CONNECTION
+// ======================================================
 
-io.on("connection", socket => {
+io.on(
+    "connection",
+    socket => {
 
 
-    // -------------------------
-    // CREATE ROOM
-    // -------------------------
+        // ==================================================
+        // CREATE ROOM
+        // ==================================================
 
-    socket.on(
-        "createRoom",
-        ({ name }) => {
+        socket.on(
+            "createRoom",
+            ({ name }) => {
 
-            name =
-                String(name || "")
+                name =
+                    String(
+                        name || ""
+                    )
                     .trim()
                     .slice(0, 20);
 
 
-            if (!name) {
+                if (!name) {
 
-                return socket.emit(
-                    "errorMessage",
-                    "Enter a name."
+                    return socket.emit(
+                        "errorMessage",
+                        "Enter a name."
+                    );
+
+                }
+
+
+                const roomCode =
+                    makeRoomCode();
+
+
+                const room = {
+
+                    code:
+                        roomCode,
+
+                    phase:
+                        "lobby",
+
+                    players: [
+
+                        {
+
+                            id:
+                                socket.id,
+
+                            name:
+                                name,
+
+                            dice:
+                                [],
+
+                            connected:
+                                true
+
+                        }
+
+                    ],
+
+                    currentPlayerId:
+                        null,
+
+                    bid:
+                        null,
+
+                    reveal:
+                        null,
+
+                    message:
+                        "Waiting for players...",
+
+                    winner:
+                        null
+
+                };
+
+
+                rooms.set(
+                    roomCode,
+                    room
                 );
 
+
+                socket.join(
+                    roomCode
+                );
+
+
+                socket.data.roomCode =
+                    roomCode;
+
+
+                sendState(room);
+
             }
+        );
 
 
-            const roomCode =
-                makeRoomCode();
+        // ==================================================
+        // JOIN ROOM
+        // ==================================================
 
+        socket.on(
+            "joinRoom",
+            ({ code, name }) => {
 
-            const room = {
-
-                code: roomCode,
-
-                phase: "lobby",
-
-                players: [
-
-                    {
-
-                        id: socket.id,
-
-                        name: name,
-
-                        dice: [],
-
-                        connected: true
-
-                    }
-
-                ],
-
-                currentPlayerId: null,
-
-                bid: null,
-
-                reveal: null,
-
-                message:
-                    "Waiting for players...",
-
-                winner: null
-
-            };
-
-
-            rooms.set(
-                roomCode,
-                room
-            );
-
-
-            socket.join(
-                roomCode
-            );
-
-
-            socket.data.roomCode =
-                roomCode;
-
-
-            sendState(room);
-
-        }
-    );
-
-
-    // -------------------------
-    // JOIN ROOM
-    // -------------------------
-
-    socket.on(
-        "joinRoom",
-        ({ code, name }) => {
-
-            code =
-                String(code || "")
+                code =
+                    String(
+                        code || ""
+                    )
                     .trim()
                     .toUpperCase();
 
 
-            name =
-                String(name || "")
+                name =
+                    String(
+                        name || ""
+                    )
                     .trim()
                     .slice(0, 20);
 
 
-            const room =
-                rooms.get(code);
+                const room =
+                    rooms.get(code);
 
 
-            if (!name) {
+                if (!name) {
 
-                return socket.emit(
-                    "errorMessage",
-                    "Enter a name."
-                );
-
-            }
-
-
-            if (!room) {
-
-                return socket.emit(
-                    "errorMessage",
-                    "Room not found."
-                );
-
-            }
-
-
-            if (room.phase !== "lobby") {
-
-                return socket.emit(
-                    "errorMessage",
-                    "Game already started."
-                );
-
-            }
-
-
-            if (
-                room.players.length >=
-                MAX_PLAYERS
-            ) {
-
-                return socket.emit(
-                    "errorMessage",
-                    "Room is full."
-                );
-
-            }
-
-
-            if (
-                room.players.some(
-                    player =>
-                        player.name.toLowerCase() ===
-                        name.toLowerCase()
-                )
-            ) {
-
-                return socket.emit(
-                    "errorMessage",
-                    "That name is already being used."
-                );
-
-            }
-
-
-            room.players.push({
-
-                id: socket.id,
-
-                name: name,
-
-                dice: [],
-
-                connected: true
-
-            });
-
-
-            socket.join(code);
-
-            socket.data.roomCode =
-                code;
-
-
-            room.message =
-                `${name} joined the table.`;
-
-
-            sendState(room);
-
-        }
-    );
-
-
-    // -------------------------
-    // START GAME
-    // -------------------------
-
-    socket.on(
-        "startGame",
-        () => {
-
-            const room =
-                rooms.get(
-                    socket.data.roomCode
-                );
-
-
-            if (!room) {
-                return;
-            }
-
-
-            if (
-                room.players[0].id !==
-                socket.id
-            ) {
-
-                return socket.emit(
-                    "errorMessage",
-                    "Only the host can start the game."
-                );
-
-            }
-
-
-            if (
-                room.players.length <
-                MIN_PLAYERS
-            ) {
-
-                return socket.emit(
-                    "errorMessage",
-                    "You need at least 2 players."
-                );
-
-            }
-
-
-            room.players.forEach(
-                player => {
-
-                    player.dice =
-                        rollDice(
-                            STARTING_DICE
-                        );
+                    return socket.emit(
+                        "errorMessage",
+                        "Enter a name."
+                    );
 
                 }
-            );
 
 
-            room.phase =
-                "playing";
+                if (!room) {
 
+                    return socket.emit(
+                        "errorMessage",
+                        "Room not found."
+                    );
 
-            room.bid =
-                null;
+                }
 
 
-            room.reveal =
-                null;
+                if (
+                    room.phase !==
+                    "lobby"
+                ) {
 
+                    return socket.emit(
+                        "errorMessage",
+                        "Game already started."
+                    );
 
-            room.winner =
-                null;
+                }
 
 
-            room.currentPlayerId =
-                room.players[0].id;
+                if (
+                    room.players.length >=
+                    MAX_PLAYERS
+                ) {
 
+                    return socket.emit(
+                        "errorMessage",
+                        "Room is full."
+                    );
 
-            room.message =
-                `${room.players[0].name}'s turn.`;
+                }
 
 
-            sendState(room);
+                if (
+                    room.players.some(
+                        player =>
+                            player.name
+                                .toLowerCase() ===
+                            name.toLowerCase()
+                    )
+                ) {
 
-        }
-    );
+                    return socket.emit(
+                        "errorMessage",
+                        "That name is already being used."
+                    );
 
+                }
 
-    // -------------------------
-    // MAKE BID
-    // -------------------------
 
-    socket.on(
-        "bid",
-        ({ quantity, face }) => {
+                room.players.push({
 
-            const room =
-                rooms.get(
-                    socket.data.roomCode
-                );
+                    id:
+                        socket.id,
 
+                    name:
+                        name,
 
-            if (
-                !room ||
-                room.phase !==
-                "playing"
-            ) {
+                    dice:
+                        [],
 
-                return;
-            }
+                    connected:
+                        true
 
+                });
 
-            if (
-                room.currentPlayerId !==
-                socket.id
-            ) {
 
-                return socket.emit(
-                    "errorMessage",
-                    "It is not your turn."
-                );
+                socket.join(code);
 
-            }
 
+                socket.data.roomCode =
+                    code;
 
-            quantity =
-                Number(quantity);
 
+                room.message =
+                    `${name} joined the table.`;
 
-            face =
-                Number(face);
-
-
-            if (
-                !Number.isInteger(quantity) ||
-                quantity < 1 ||
-                quantity > totalDice(room)
-            ) {
-
-                return socket.emit(
-                    "errorMessage",
-                    `Quantity must be between 1 and ${totalDice(room)}.`
-                );
-
-            }
-
-
-            if (
-                !Number.isInteger(face) ||
-                face < 1 ||
-                face > 6
-            ) {
-
-                return socket.emit(
-                    "errorMessage",
-                    "Invalid die face."
-                );
-
-            }
-
-
-            const newBid = {
-
-                quantity,
-
-                face,
-
-                playerId:
-                    socket.id
-
-            };
-
-
-            if (
-                !isHigherBid(
-                    newBid,
-                    room.bid
-                )
-            ) {
-
-                return socket.emit(
-                    "errorMessage",
-                    "Your bid must be higher than the current bid."
-                );
-
-            }
-
-
-            room.bid =
-                newBid;
-
-
-            const next =
-                getNextPlayer(
-                    room,
-                    socket.id
-                );
-
-
-            room.currentPlayerId =
-                next.id;
-
-
-            room.message =
-                `${next.name}'s turn.`;
-
-
-            sendState(room);
-
-        }
-    );
-
-
-    // -------------------------
-    // CALL LIAR
-    // -------------------------
-
-    socket.on(
-        "callLiar",
-        () => {
-
-            const room =
-                rooms.get(
-                    socket.data.roomCode
-                );
-
-
-            if (
-                !room ||
-                room.phase !==
-                "playing"
-            ) {
-
-                return;
-            }
-
-
-            if (
-                room.currentPlayerId !==
-                socket.id
-            ) {
-
-                return socket.emit(
-                    "errorMessage",
-                    "It is not your turn."
-                );
-
-            }
-
-
-            if (!room.bid) {
-
-                return socket.emit(
-                    "errorMessage",
-                    "There is no bid to challenge."
-                );
-
-            }
-
-
-            const caller =
-                room.players.find(
-                    player =>
-                        player.id ===
-                        socket.id
-                );
-
-
-            const bidder =
-                room.players.find(
-                    player =>
-                        player.id ===
-                        room.bid.playerId
-                );
-
-
-            // ---------------------------------
-            // IMPORTANT:
-            // FREEZE THE DICE BEFORE REMOVING ONE
-            // ---------------------------------
-
-            const frozenDice =
-                room.players.map(
-                    player => ({
-
-                        id: player.id,
-
-                        name: player.name,
-
-                        dice:
-                            player.dice.slice()
-
-                    })
-                );
-
-
-            const actualCount =
-                countFace(
-                    room,
-                    room.bid.face
-                );
-
-
-            const bidWasTrue =
-                actualCount >=
-                room.bid.quantity;
-
-
-            const loser =
-                bidWasTrue
-                    ? caller
-                    : bidder;
-
-
-            // Save the exact dice
-            // before penalty.
-
-            room.reveal = {
-
-                caller:
-                    caller.name,
-
-                bidder:
-                    bidder.name,
-
-                quantity:
-                    room.bid.quantity,
-
-                face:
-                    room.bid.face,
-
-                actualCount:
-
-                    actualCount,
-
-                bidWasTrue:
-
-                    bidWasTrue,
-
-                loser:
-                    loser.name,
-
-                loserId:
-                    loser.id,
-
-                dice:
-                    frozenDice
-
-            };
-
-
-            // ---------------------------------
-            // FREEZE GAME
-            // ---------------------------------
-
-            room.phase =
-                "reveal";
-
-
-            room.currentPlayerId =
-                null;
-
-
-            room.message =
-                bidWasTrue
-
-                    ? `${caller.name} called Liar — the bid was TRUE.`
-
-                    : `${caller.name} called Liar — LIAR!`;
-
-
-            // DO NOT REMOVE THE DIE YET.
-            //
-            // Everyone gets to see the
-            // exact dice that were rolled.
-
-
-            sendState(room);
-
-        }
-    );
-
-
-    // -------------------------
-    // CONTINUE AFTER REVEAL
-    // -------------------------
-
-    socket.on(
-        "continueRound",
-        () => {
-
-            const room =
-                rooms.get(
-                    socket.data.roomCode
-                );
-
-
-            if (
-                !room ||
-                room.phase !==
-                "reveal"
-            ) {
-
-                return;
-            }
-
-
-            if (!room.reveal) {
-
-                return;
-            }
-
-
-            // Now remove the die
-            // AFTER everyone saw the reveal.
-
-            const loser =
-                room.players.find(
-                    player =>
-                        player.id ===
-                        room.reveal.loserId
-                );
-
-
-            if (
-                loser &&
-                loser.dice.length > 0
-            ) {
-
-                loser.dice.pop();
-
-            }
-
-
-            // Check for winner.
-
-            if (
-                checkWinner(room)
-            ) {
 
                 sendState(room);
 
-                return;
-
             }
+        );
 
 
-            // Loser starts next round.
+        // ==================================================
+        // START GAME
+        // ==================================================
 
-            startNextRound(
-                room,
-                room.reveal.loserId
-            );
+        socket.on(
+            "startGame",
+            () => {
 
-        }
-    );
-
-
-    // -------------------------
-    // RESTART
-    // -------------------------
-
-    socket.on(
-        "restartGame",
-        () => {
-
-            const room =
-                rooms.get(
-                    socket.data.roomCode
-                );
+                const room =
+                    rooms.get(
+                        socket.data.roomCode
+                    );
 
 
-            if (!room) {
-                return;
-            }
+                if (!room) {
+                    return;
+                }
 
 
-            if (
-                room.players[0].id !==
-                socket.id
-            ) {
+                if (
+                    room.players[0].id !==
+                    socket.id
+                ) {
 
-                return socket.emit(
-                    "errorMessage",
-                    "Only the host can restart the game."
-                );
-
-            }
-
-
-            room.players.forEach(
-                player => {
-
-                    player.dice =
-                        rollDice(
-                            STARTING_DICE
-                        );
-
-                    player.connected =
-                        true;
+                    return socket.emit(
+                        "errorMessage",
+                        "Only the host can start the game."
+                    );
 
                 }
-            );
 
 
-            room.phase =
-                "playing";
+                if (
+                    room.players.length <
+                    MIN_PLAYERS
+                ) {
+
+                    return socket.emit(
+                        "errorMessage",
+                        "You need at least 2 players."
+                    );
+
+                }
 
 
-            room.bid =
-                null;
+                room.players.forEach(
+                    player => {
 
+                        player.dice =
+                            rollDice(
+                                STARTING_DICE
+                            );
 
-            room.reveal =
-                null;
-
-
-            room.winner =
-                null;
-
-
-            room.currentPlayerId =
-                room.players[0].id;
-
-
-            room.message =
-                `${room.players[0].name}'s turn.`;
-
-
-            sendState(room);
-
-        }
-    );
-
-
-    // -------------------------
-    // DISCONNECT
-    // -------------------------
-
-    socket.on(
-        "disconnect",
-        () => {
-
-            const room =
-                rooms.get(
-                    socket.data.roomCode
+                    }
                 );
 
 
-            if (!room) {
-                return;
+                room.phase =
+                    "playing";
+
+
+                room.bid =
+                    null;
+
+
+                room.reveal =
+                    null;
+
+
+                room.winner =
+                    null;
+
+
+                room.currentPlayerId =
+                    room.players[0].id;
+
+
+                room.message =
+                    `${room.players[0].name}'s turn.`;
+
+
+                sendState(room);
+
             }
+        );
 
 
-            const player =
-                room.players.find(
-                    p =>
-                        p.id ===
-                        socket.id
-                );
+        // ==================================================
+        // MAKE BID
+        // ==================================================
 
+        socket.on(
+            "bid",
+            ({ quantity, face }) => {
 
-            if (!player) {
-                return;
-            }
-
-
-            player.connected =
-                false;
-
-
-            if (
-                room.phase ===
-                "lobby"
-            ) {
-
-                room.players =
-                    room.players.filter(
-                        p =>
-                            p.id !==
-                            socket.id
+                const room =
+                    rooms.get(
+                        socket.data.roomCode
                     );
 
 
                 if (
-                    room.players.length ===
-                    0
+                    !room ||
+                    room.phase !==
+                    "playing"
                 ) {
-
-                    rooms.delete(
-                        room.code
-                    );
 
                     return;
 
                 }
 
+
+                if (
+                    room.currentPlayerId !==
+                    socket.id
+                ) {
+
+                    return socket.emit(
+                        "errorMessage",
+                        "It is not your turn."
+                    );
+
+                }
+
+
+                quantity =
+                    Number(quantity);
+
+
+                face =
+                    Number(face);
+
+
+                if (
+                    !Number.isInteger(
+                        quantity
+                    ) ||
+
+                    quantity < 1 ||
+
+                    quantity >
+                    totalDice(room)
+                ) {
+
+                    return socket.emit(
+                        "errorMessage",
+                        `Quantity must be between 1 and ${totalDice(room)}.`
+                    );
+
+                }
+
+
+                if (
+                    !Number.isInteger(
+                        face
+                    ) ||
+
+                    face < 1 ||
+
+                    face > 6
+                ) {
+
+                    return socket.emit(
+                        "errorMessage",
+                        "Invalid die face."
+                    );
+
+                }
+
+
+                const newBid = {
+
+                    quantity:
+                        quantity,
+
+                    face:
+                        face,
+
+                    playerId:
+                        socket.id
+
+                };
+
+
+                if (
+                    !isHigherBid(
+                        newBid,
+                        room.bid
+                    )
+                ) {
+
+                    return socket.emit(
+                        "errorMessage",
+
+                        room.bid
+
+                            ? `Invalid bid. You must increase the quantity if using ${room.bid.face}s, or choose a higher face than ${room.bid.face}.`
+
+                            : "Invalid bid."
+                    );
+
+                }
+
+
+                room.bid =
+                    newBid;
+
+
+                const next =
+                    getNextPlayer(
+                        room,
+                        socket.id
+                    );
+
+
+                room.currentPlayerId =
+                    next.id;
+
+
+                room.message =
+                    `${next.name}'s turn.`;
+
+
+                sendState(room);
+
             }
+        );
 
 
-            sendState(room);
+        // ==================================================
+        // CALL LIAR
+        // ==================================================
 
-        }
-    );
+        socket.on(
+            "callLiar",
+            () => {
 
-});
+                const room =
+                    rooms.get(
+                        socket.data.roomCode
+                    );
 
+
+                if (
+                    !room ||
+                    room.phase !==
+                    "playing"
+                ) {
+
+                    return;
+                }
+
+
+                if (
+                    room.currentPlayerId !==
+                    socket.id
+                ) {
+
+                    return socket.emit(
+                        "errorMessage",
+                        "It is not your turn."
+                    );
+
+                }
+
+
+                if (!room.bid) {
+
+                    return socket.emit(
+                        "errorMessage",
+                        "There is no bid to challenge."
+                    );
+
+                }
+
+
+                const caller =
+                    room.players.find(
+                        player =>
+                            player.id ===
+                            socket.id
+                    );
+
+
+                const bidder =
+                    room.players.find(
+                        player =>
+                            player.id ===
+                            room.bid.playerId
+                    );
+
+
+                // ------------------------------------------
+                // FREEZE EVERYONE'S DICE
+                // BEFORE PENALTY
+                // ------------------------------------------
+
+                const frozenDice =
+                    room.players.map(
+                        player => ({
+
+                            id:
+                                player.id,
+
+                            name:
+                                player.name,
+
+                            dice:
+                                player.dice.slice()
+
+                        })
+                    );
+
+
+                const actualCount =
+                    countFace(
+                        room,
+                        room.bid.face
+                    );
+
+
+                const bidWasTrue =
+                    actualCount >=
+                    room.bid.quantity;
+
+
+                const loser =
+                    bidWasTrue
+                        ? caller
+                        : bidder;
+
+
+                room.reveal = {
+
+                    caller:
+                        caller.name,
+
+                    bidder:
+                        bidder.name,
+
+                    quantity:
+                        room.bid.quantity,
+
+                    face:
+                        room.bid.face,
+
+                    actualCount:
+                        actualCount,
+
+                    bidWasTrue:
+                        bidWasTrue,
+
+                    loser:
+                        loser.name,
+
+                    loserId:
+                        loser.id,
+
+                    dice:
+                        frozenDice
+
+                };
+
+
+                // Freeze the game.
+
+                room.phase =
+                    "reveal";
+
+
+                room.currentPlayerId =
+                    null;
+
+
+                room.message =
+                    bidWasTrue
+
+                        ? `${caller.name} called Liar — the bid was TRUE.`
+
+                        : `${caller.name} called Liar — LIAR!`;
+
+
+                // DO NOT REMOVE DIE YET.
+
+                sendState(room);
+
+            }
+        );
+
+
+        // ==================================================
+        // CONTINUE AFTER REVEAL
+        // ==================================================
+
+        socket.on(
+            "continueRound",
+            () => {
+
+                const room =
+                    rooms.get(
+                        socket.data.roomCode
+                    );
+
+
+                if (
+                    !room ||
+                    room.phase !==
+                    "reveal"
+                ) {
+
+                    return;
+                }
+
+
+                if (!room.reveal) {
+
+                    return;
+                }
+
+
+                // ------------------------------------------
+                // NOW REMOVE LOSER'S DIE
+                // ------------------------------------------
+
+                const loser =
+                    room.players.find(
+                        player =>
+                            player.id ===
+                            room.reveal.loserId
+                    );
+
+
+                if (
+                    loser &&
+                    loser.dice.length > 0
+                ) {
+
+                    loser.dice.pop();
+
+                }
+
+
+                // ------------------------------------------
+                // CHECK WINNER
+                // ------------------------------------------
+
+                if (
+                    checkWinner(room)
+                ) {
+
+                    sendState(room);
+
+                    return;
+
+                }
+
+
+                // ------------------------------------------
+                // LOSER STARTS NEXT ROUND
+                // ------------------------------------------
+
+                startNextRound(
+                    room,
+                    room.reveal.loserId
+                );
+
+            }
+        );
+
+
+        // ==================================================
+        // RESTART GAME
+        // ==================================================
+
+        socket.on(
+            "restartGame",
+            () => {
+
+                const room =
+                    rooms.get(
+                        socket.data.roomCode
+                    );
+
+
+                if (!room) {
+                    return;
+                }
+
+
+                if (
+                    room.players[0].id !==
+                    socket.id
+                ) {
+
+                    return socket.emit(
+                        "errorMessage",
+                        "Only the host can restart the game."
+                    );
+
+                }
+
+
+                room.players.forEach(
+                    player => {
+
+                        player.dice =
+                            rollDice(
+                                STARTING_DICE
+                            );
+
+                        player.connected =
+                            true;
+
+                    }
+                );
+
+
+                room.phase =
+                    "playing";
+
+
+                room.bid =
+                    null;
+
+
+                room.reveal =
+                    null;
+
+
+                room.winner =
+                    null;
+
+
+                room.currentPlayerId =
+                    room.players[0].id;
+
+
+                room.message =
+                    `${room.players[0].name}'s turn.`;
+
+
+                sendState(room);
+
+            }
+        );
+
+
+        // ==================================================
+        // DISCONNECT
+        // ==================================================
+
+        socket.on(
+            "disconnect",
+            () => {
+
+                const room =
+                    rooms.get(
+                        socket.data.roomCode
+                    );
+
+
+                if (!room) {
+                    return;
+                }
+
+
+                const player =
+                    room.players.find(
+                        p =>
+                            p.id ===
+                            socket.id
+                    );
+
+
+                if (!player) {
+                    return;
+                }
+
+
+                player.connected =
+                    false;
+
+
+                if (
+                    room.phase ===
+                    "lobby"
+                ) {
+
+                    room.players =
+                        room.players.filter(
+                            p =>
+                                p.id !==
+                                socket.id
+                        );
+
+
+                    if (
+                        room.players.length ===
+                        0
+                    ) {
+
+                        rooms.delete(
+                            room.code
+                        );
+
+                        return;
+
+                    }
+
+                }
+
+
+                sendState(room);
+
+            }
+        );
+
+    }
+);
+
+
+// ======================================================
+// START SERVER
+// ======================================================
 
 server.listen(
     PORT,
